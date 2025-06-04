@@ -2,8 +2,11 @@ import React from 'react';
 import Image from 'next/image';
 import logo from '../../assets/logo.png';
 
+
 function Page() {
   return (
+    <>
+   
     <div className='background min-h-screen flex justify-center items-center drop-shadow-lg'>
       <div className='bg-white w-[581px] rounded-[12px] pt-[50px] pb-[50px] flex flex-col items-center space-y-[15px]'>
         <div className='w-[200px] relative'>
@@ -40,6 +43,7 @@ function Page() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
