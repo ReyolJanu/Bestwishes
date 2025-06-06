@@ -35,7 +35,7 @@ function Page() {
 
           <button className='w-full h-[50px] rounded-[8px] btn-color text-white font-medium'>Login</button>
           <div className='w-full flex justify-center items-center font-content'>
-            <span>Don’t have an account? <span className='underline decoration-solid text-blue-500'>Sign up</span></span>
+            <span>Don’t have an account? <a href="/register" className="text-blue-600">Sign up</a></span>
           </div>
         </div>
       </div>
