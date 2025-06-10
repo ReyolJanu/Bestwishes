@@ -1,6 +1,6 @@
-"use client"
-
-import * as React from "react"
+"use client";
+import { useState } from "react";
+import * as React from "react";
 import {
   BarChart3,
   Users,
@@ -38,14 +38,14 @@ import {
   User,
   Lock,
   Bell,
-} from "lucide-react"
+} from "lucide-react";
 
 type MenuItem = {
-  title: string
-  icon: React.ElementType
-  expanded?: boolean
-  submenu?: { title: string; icon: React.ElementType }[]
-}
+  title: string;
+  icon: React.ElementType;
+  expanded?: boolean;
+  submenu?: { title: string; icon: React.ElementType }[];
+};
 
 export function SimpleSidebar() {
   const [menuItems, setMenuItems] = React.useState<MenuItem[]>([
@@ -67,7 +67,10 @@ export function SimpleSidebar() {
         { title: "View Users List", icon: Eye },
         { title: "Edit/Delete Users", icon: Edit },
         { title: "User Activity (Logins, Orders, Reviews)", icon: Activity },
-        { title: "Manage User Status (Active/Inactive, Block/Unblock)", icon: UserCheck },
+        {
+          title: "Manage User Status (Active/Inactive, Block/Unblock)",
+          icon: UserCheck,
+        },
         { title: "Search Users by Name, Email, Order History", icon: Search },
       ],
     },
@@ -154,34 +157,38 @@ export function SimpleSidebar() {
         { title: "Notification Preferences", icon: Bell },
       ],
     },
-  ])
+  ]);
 
   const toggleMenu = (index: number) => {
-    setMenuItems((prev) => prev.map((item, i) => (i === index ? { ...item, expanded: !item.expanded } : item)))
-  }
+    setMenuItems((prev) =>
+      prev.map((item, i) =>
+        i === index ? { ...item, expanded: !item.expanded } : item
+      )
+    );
+  };
 
   return (
-    <div className="w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto">
+    <div className=" h-screen bg-red-200 border-r border-gray-200 overflow-y-auto">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h1 className="text-lg font-bold text-gray-800">Admin Panel</h1>
-        <p className="text-sm text-gray-500">E-commerce Dashboard</p>
-      </div>
 
+      <div className="flex justify-center items-center sm:block hidden">
+        <span className="text-base font-bold text-gray-800 md:block hidden text-center p-2">
+          Admin Panel
+        </span>
+      </div>
       {/* Navigation */}
       <div className="p-2">
-        <p className="text-xs text-gray-500 mb-3 px-2">Side Navigation Bar (Admin Panel)</p>
 
         {menuItems.map((item, index) => (
-          <div key={item.title} className="mb-1">
+          <div key={item.title} className="mb-1 ">
             {/* Main Menu Item */}
             <div
               className="flex items-center justify-between p-2 rounded hover:bg-gray-100 cursor-pointer"
               onClick={() => toggleMenu(index)}
             >
               <div className="flex items-center gap-2">
-                <item.icon className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-700">{item.title}</span>
+                <item.icon className="w-4 h-4 text-gray-600 sm:w-5 sm:h-5 md:w-5 md:h-5 lg:w-6 lg:h-6 xl:w-7 xl:h-7 text-gray-600" />
+                <span className="text-sm text-gray-700 md:block hidden ">{item.title}</span>
               </div>
               {item.submenu &&
                 (item.expanded ? (
@@ -195,9 +202,14 @@ export function SimpleSidebar() {
             {item.submenu && item.expanded && (
               <div className="ml-6 mt-1">
                 {item.submenu.map((subItem, subIndex) => (
-                  <div key={subIndex} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
+                  <div
+                    key={subIndex}
+                    className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                  >
                     <subItem.icon className="w-3 h-3 text-gray-500" />
-                    <span className="text-xs text-gray-600">{subItem.title}</span>
+                    <span className="text-xs text-gray-600">
+                      {subItem.title}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -205,7 +217,7 @@ export function SimpleSidebar() {
           </div>
         ))}
 
-        {/* Log Out */}
+         {/* Log Out */}
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center gap-2 p-2 rounded hover:bg-red-50 cursor-pointer text-red-600">
             <LogOut className="w-4 h-4" />
@@ -214,5 +226,5 @@ export function SimpleSidebar() {
         </div>
       </div>
     </div>
-  )
+  );
 }
