@@ -5,6 +5,9 @@ import axios from "axios"
 
 import Header from "./components/Header"
 
+
+
+
 export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -34,7 +37,9 @@ export default function Login() {
 
   return (
     <>
-    <Header/>
+    {/* <Header/> */}
+    
+   
     </>
     // <div className="min-h-screen flex items-center justify-center bg-gray-100">
     //   <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
