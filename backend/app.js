@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const path = require("path");
 const connectDB = require("./config/db");
 require("dotenv").config();
 
@@ -18,7 +19,10 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-//  Routes
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
 app.use('/api', authRoutes);
 app.use('/api', productRoutes);
 

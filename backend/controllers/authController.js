@@ -53,7 +53,9 @@ exports.registerUser = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        role: user.role
+        role: user.role,
+        phone: user.phone,
+        address: user.address
       }
     });
 
@@ -104,6 +106,7 @@ exports.loginUser = async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         role: user.role,
+        address: user.address,
         password: user.password,
         phone: user.phone,
       }
@@ -178,6 +181,171 @@ exports.changePassword = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong",
+      error: err.message
+    });
+  }
+};
+
+// Password Reset Request
+exports.requestPasswordReset = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // Save reset token to user
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    // TODO: Send email with reset link
+    // For now, we'll just return the token
+    res.status(200).json({
+      success: true,
+      message: 'Password reset link sent to email',
+      resetToken // Remove this in production
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Error processing password reset',
+      error: err.message
+    });
+  }
+};
+
+// Reset Password
+exports.resetPassword = async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findOne({
+      _id: decoded.id,
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password has been reset successfully'
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting password',
+      error: err.message
+    });
+  }
+};
+
+// Email Verification
+exports.verifyEmail = async (req, res) => {
+  const { token } = req.params;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findOne({
+      _id: decoded.id,
+      emailVerificationToken: token
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification token'
+      });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Email verified successfully'
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Error verifying email',
+      error: err.message
+    });
+  }
+};
+
+// Send Verification Email
+exports.sendVerificationEmail = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already verified'
+      });
+    }
+
+    // Generate verification token
+    const verificationToken = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // Save verification token
+    user.emailVerificationToken = verificationToken;
+    await user.save();
+
+    // TODO: Send verification email
+    // For now, we'll just return the token
+    res.status(200).json({
+      success: true,
+      message: 'Verification email sent',
+      verificationToken // Remove this in production
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Error sending verification email',
       error: err.message
     });
   }

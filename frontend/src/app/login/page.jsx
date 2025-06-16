@@ -8,6 +8,7 @@ import { userLogin } from '../../app/slices/userSlice';
 import logo from '../../assets/logo.png';
 import { useRouter } from 'next/navigation';
 import Loader from '../components/loader/page';
+import Link from 'next/link';
 
 function Page() {
   const dispatch = useDispatch();
@@ -26,16 +27,23 @@ function Page() {
       const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
         email,
         password
+      }, {
+        withCredentials: true 
       });
 
       const userData = res.data.user;
+
+      // Verify we have the user data
+      if (!userData || !userData.role) {
+        throw new Error('Invalid user data received');
+      }
 
       dispatch(userLogin({
         user: userData,
         role: userData.role,
       }));
 
-      console.log('User role:', userData.role);
+      console.log('Login successful, user role:', userData.role);
 
       // Role-based redirection
       if (userData.role === 'admin') {
@@ -51,6 +59,7 @@ function Page() {
     } catch (error) {
       console.error('Login error:', error);
       setErrorMsg(error.response?.data?.message || 'Login failed. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -113,7 +122,7 @@ function Page() {
               </button>
 
               <div className='w-full flex justify-center items-center font-content'>
-                <span>Don't have an account? <span className='underline text-blue-500 cursor-pointer'>Sign up</span></span>
+                <span>Don't have an account? <Link href="/signup" className='underline text-blue-500 cursor-pointer'>Sign up</Link></span>
               </div>
             </div>
           </div>

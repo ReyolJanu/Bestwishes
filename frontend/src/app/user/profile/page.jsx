@@ -5,7 +5,7 @@ import { useSelector } from "react-redux";
 import { useRouter } from "next/navigation";
 import { FiMail, FiPhone, FiMapPin, FiShoppingBag, FiLogOut, FiEdit2, FiUser } from "react-icons/fi";
 import Navbar from "@/app/components/navbar/page";
-
+import Loader from "@/app/components/loader/page";
 export default function ProfilePage() {
   const { user } = useSelector(state => state.userState);
   const router = useRouter();
@@ -25,12 +25,12 @@ export default function ProfilePage() {
     return (
       <>
         <Navbar />
-        <div className="min-h-[calc(100vh-80px)] bg-gray-50 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-        </div>
+        <Loader />
       </>
     );
   }
+
+  console.log(user);
 
   return (
     <>
@@ -128,7 +128,7 @@ export default function ProfilePage() {
                         <input
                           type="text"
                           defaultValue={user.address || ""}
-                          placeholder="Add address"
+                          placeholder="address"
                           className="pl-10 w-full px-4 py-2.5 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent transition"
                         />
                       </div>

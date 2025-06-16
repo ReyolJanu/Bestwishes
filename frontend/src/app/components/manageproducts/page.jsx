@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { CalendarIcon, Upload, X, Plus, Save, Eye, Copy, Trash2 } from "lucide-react"
 import { format } from "date-fns"
 import { useLoading } from '../../hooks/useLoading'
 import Loader from '../loader/page'
+import { useSelector } from "react-redux"
+import { useRouter } from "next/navigation"
 
 import { Button } from "../../../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card"
@@ -22,38 +24,81 @@ import { Separator } from "../../../components/ui/separator"
 import { cn } from "../../../lib/utils"
 import ProductPreviewModalComponent from "../preview/page"
 
-// Sample data for dropdowns and multi-selects
+// Update category options to match backend schema
 const categoryOptions = [
-  "Greeting Cards",
-  "Gifts",
-  "Homeware",
-  "Stationery",
-  "Accessories",
-  "Clothing",
-  "Books",
-  "Electronics",
+  "Balloon",
+  "Card",
+  "Gift Box",
+  "Cake Topper",
+  "Decoration Item",
+  "Photo Frame",
+  "Mug",
+  "Toy",
+  "Other"
 ]
 
-const subcategoryOptions = [
-  "Birthday",
+// Update event options to match backend schema
+const eventOptions = [
   "Anniversary",
-  "Wedding",
-  "Christmas",
-  "Kitchenware",
-  "Mugs",
-  "Cushions",
-  "Wall Art",
-]
-
-const occasionOptions = [
   "Birthday",
+  "British Souvenir",
   "Christmas",
-  "Valentine's Day",
-  "Mother's Day",
+  "Easter",
   "Father's Day",
-  "Anniversary",
+  "Mother's Day",
+  "Halloween",
+  "Teachers & Graduation",
+  "Valentine's Day",
   "Wedding",
-  "Graduation",
+  "Other"
+]
+
+const relationOptions = [
+  "Father",
+  "Mother",
+  "Brother",
+  "Sister",
+  "Friend",
+  "Grandfather",
+  "Grandmother",
+  "Husband",
+  "Wife",
+  "Other"
+]
+
+const materialOptions = [
+  "Foil",
+  "Latex",
+  "Paper",
+  "Plastic",
+  "Ceramic",
+  "Wood",
+  "Other"
+]
+
+const sizeOptions = [
+  "Small",
+  "Medium",
+  "Large",
+  "Extra Large"
+]
+
+const typeOptions = [
+  "Helium Balloon",
+  "Air Balloon",
+  "Pop-up Card",
+  "Musical Card",
+  "LED Gift",
+  "Customizable",
+  "Combo",
+  "Other"
+]
+
+const rentTypeOptions = [
+  "none",
+  "daily",
+  "weekly",
+  "monthly"
 ]
 
 const recipientOptions = ["Mum", "Dad", "Sister", "Brother", "Friend", "Partner", "Colleague", "Teacher", "Boss"]
@@ -83,11 +128,77 @@ const shippingClassOptions = ["Free Shipping", "Standard", "Fragile", "Oversize"
 
 const taxClassOptions = ["VAT (15%)", "GST (10%)", "Exempt", "Reduced Rate"]
 
+// Add image compression utility
+const compressImage = async (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Calculate new dimensions (max 800px on longest side)
+        const MAX_SIZE = 800;
+        if (width > height && width > MAX_SIZE) {
+          height = Math.round((height * MAX_SIZE) / width);
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width = Math.round((width * MAX_SIZE) / height);
+          height = MAX_SIZE;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob with reduced quality
+        canvas.toBlob(
+          (blob) => {
+            resolve(new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            }));
+          },
+          'image/jpeg',
+          0.7 // quality
+        );
+      };
+    };
+  });
+};
+
 export default function AdminProductManager() {
-  const { loading, withLoading } = useLoading()
-  const [selectedCategories, setSelectedCategories] = useState([])
-  const [selectedSubcategories, setSelectedSubcategories] = useState([])
-  const [selectedOccasions, setSelectedOccasions] = useState([])
+  const { user } = useSelector(state => state.userState);
+  const router = useRouter();
+  const { loading, withLoading } = useLoading();
+  const [products, setProducts] = useState([]);
+  const [productData, setProductData] = useState({
+    title: "",
+    description: "",
+    mainCategory: "",
+    facets: {
+      events: [],
+      relation: "",
+      material: "",
+      size: "",
+      color: "",
+      type: ""
+    },
+    price: 0,
+    imageUrls: [],
+    stock: 0,
+    isAvailable: true,
+    rating: 0,
+    rentType: "none"
+  });
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedSubcategories, setSelectedSubcategories] = useState([]);
+  const [selectedEvents, setSelectedEvents] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState([])
   const [selectedThemes, setSelectedThemes] = useState([])
   const [selectedProductTypes, setSelectedProductTypes] = useState([])
@@ -99,34 +210,14 @@ export default function AdminProductManager() {
   const [saleEndDate, setSaleEndDate] = useState()
   const [variants, setVariants] = useState([])
   const [showPreview, setShowPreview] = useState(false)
-  const [productData] = useState({
-    id: "PRD-001",
-    name: "Personalized Birthday Mug",
-    subtitle: "Make their special day memorable",
-    sku: "MUG-BIRTH-001",
-    status: "published",
-    visibility: true,
-    featured: true,
-    shortDescription:
-      "A beautiful personalized mug perfect for birthday celebrations with custom text and vibrant colors.",
-    fullDescription:
-      "This premium ceramic mug is perfect for celebrating birthdays in style. Made from high-quality materials, it features a glossy finish and comfortable handle. The design can be personalized with names, dates, and special messages to create a truly unique gift that will be treasured for years to come.",
-    costPrice: 8.5,
-    retailPrice: 24.99,
-    salePrice: 19.99,
-    stockQuantity: 150,
-    weight: 0.35,
-    dimensions: { length: 12, width: 8, height: 9 },
-    seoTitle: "Personalized Birthday Mug - Custom Gift | Gift Gallery",
-    metaDescription:
-      "Create the perfect birthday gift with our personalized mugs. High-quality ceramic with custom text and designs. Fast shipping available.",
-    images: [
-      "/placeholder.svg?height=400&width=400&text=Birthday+Mug+Main",
-      "/placeholder.svg?height=400&width=400&text=Birthday+Mug+Side",
-      "/placeholder.svg?height=400&width=400&text=Birthday+Mug+Handle",
-    ],
-  })
-  const [products, setProducts] = useState([])
+  const [selectedRelation, setSelectedRelation] = useState("")
+  const [selectedMaterial, setSelectedMaterial] = useState("")
+  const [selectedSize, setSelectedSize] = useState("")
+  const [selectedType, setSelectedType] = useState("")
+  const [selectedColor, setSelectedColor] = useState("")
+  const [selectedRentType, setSelectedRentType] = useState("none")
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleMultiSelectToggle = (value, selectedValues, setSelectedValues) => {
     if (selectedValues.includes(value)) {
@@ -245,6 +336,286 @@ export default function AdminProductManager() {
     })
   }
 
+  // Add test product function
+  const createTestProduct = () => {
+    const testProduct = {
+      title: "Birthday Balloon Set",
+      description: "Colorful birthday balloon set with helium, perfect for celebrations",
+      mainCategory: "Balloon",
+      facets: {
+        events: ["Birthday"],
+        relation: "Friend",
+        material: "Latex",
+        size: "Medium",
+        color: "Multi-color",
+        type: "Helium Balloon"
+      },
+      price: 19.99,
+      imageUrls: ["https://example.com/balloon1.jpg"],
+      stock: 50,
+      isAvailable: true,
+      rentType: "none"
+    };
+
+    setProductData(testProduct);
+    setSelectedEvents(["Birthday"]);
+    setSelectedRelation("Friend");
+    setSelectedMaterial("Latex");
+    setSelectedSize("Medium");
+    setSelectedColor("Multi-color");
+    setSelectedType("Helium Balloon");
+    setSelectedRentType("none");
+  };
+
+  const handleImageUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    setIsUploading(true);
+
+    try {
+      // Compress each image
+      const compressedFiles = await Promise.all(
+        files.map(file => compressImage(file))
+      );
+      
+      // Create object URLs for preview
+      const imageUrls = compressedFiles.map(file => URL.createObjectURL(file));
+      
+      setUploadedImages(prev => [...prev, ...compressedFiles]);
+      setProductData(prev => ({
+        ...prev,
+        imageUrls: [...prev.imageUrls, ...imageUrls]
+      }));
+    } catch (error) {
+      console.error('Error processing images:', error);
+      alert('Failed to process images. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeImage = (index) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+    setProductData(prev => ({
+      ...prev,
+      imageUrls: prev.imageUrls.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Update the media tab content
+  const renderMediaTab = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Media</CardTitle>
+        <CardDescription>Upload product images</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label>Product Images *</Label>
+          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+            <input
+              type="file"
+              id="image-upload"
+              multiple
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <label
+              htmlFor="image-upload"
+              className="cursor-pointer flex flex-col items-center justify-center"
+            >
+              <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Click to upload or drag and drop your product images
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Supported formats: JPG, PNG, GIF (max 5MB each)
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="mt-2"
+                disabled={isUploading}
+              >
+                {isUploading ? 'Uploading...' : 'Choose Files'}
+              </Button>
+            </label>
+          </div>
+
+          {/* Image Preview Grid */}
+          {productData.imageUrls.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              {productData.imageUrls.map((url, index) => (
+                <div key={index} className="relative group">
+                  <div className="aspect-square relative overflow-hidden rounded-lg border">
+                    <img
+                      src={url}
+                      alt={`Product ${index + 1}`}
+                      className="object-cover w-full h-full"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => removeImage(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    {uploadedImages[index]?.name || `Image ${index + 1}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const handleSubmit = async () => {
+    // Validate required fields
+    if (!productData.title || !productData.description || !productData.mainCategory || 
+        !productData.price || !uploadedImages || uploadedImages.length === 0) {
+      alert("Please fill all required fields: Title, Description, Main Category, Price, and at least one image");
+      return;
+    }
+
+    // Validate numeric fields
+    if (isNaN(Number(productData.price)) || Number(productData.price) <= 0) {
+      alert("Please enter a valid price");
+      return;
+    }
+
+    if (isNaN(Number(productData.stock)) || Number(productData.stock) < 0) {
+      alert("Please enter a valid stock quantity");
+      return;
+    }
+
+    // Check if user is logged in
+    if (!user) {
+      alert('Please log in to add products');
+      router.push('/login');
+      return;
+    }
+
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      alert('Only admin users can add products');
+      return;
+    }
+
+    await withLoading(async () => {
+      try {
+        // Create FormData for multipart/form-data upload
+        const formData = new FormData();
+        
+        // Add product data
+        formData.append('title', productData.title);
+        formData.append('description', productData.description);
+        formData.append('mainCategory', productData.mainCategory);
+        formData.append('price', String(productData.price));
+        formData.append('stock', String(productData.stock));
+        formData.append('isAvailable', String(productData.isAvailable));
+        formData.append('rentType', productData.rentType);
+        
+        // Add facets as a JSON string
+        const facetsData = {
+          events: selectedEvents,
+          relation: selectedRelation,
+          material: selectedMaterial,
+          size: selectedSize,
+          color: selectedColor,
+          type: selectedType
+        };
+        formData.append('facets', JSON.stringify(facetsData));
+
+        // Add images
+        uploadedImages.forEach((file, index) => {
+          formData.append('images', file);
+        });
+
+        console.log('Submitting product with data:', {
+          title: productData.title,
+          description: productData.description,
+          mainCategory: productData.mainCategory,
+          price: productData.price,
+          stock: productData.stock,
+          facets: facetsData,
+          imageCount: uploadedImages.length
+        });
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/addProduct`, {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          console.error('Server response:', data);
+          
+          if (response.status === 401) {
+            router.push('/login');
+            throw new Error('Session expired. Please log in again.');
+          } else if (response.status === 403) {
+            throw new Error('Only admin users can add products');
+          } else if (response.status === 413) {
+            throw new Error('Images are too large. Please try uploading smaller images.');
+          } else {
+            throw new Error(data.message || 'Failed to create product');
+          }
+        }
+
+        const data = await response.json();
+        console.log('Product created successfully:', data);
+        alert('Product created successfully!');
+        
+        // Reset form
+        setProductData({
+          title: "",
+          description: "",
+          mainCategory: "",
+          facets: {
+            events: [],
+            relation: "",
+            material: "",
+            size: "",
+            color: "",
+            type: ""
+          },
+          price: 0,
+          imageUrls: [],
+          stock: 0,
+          isAvailable: true,
+          rating: 0,
+          rentType: "none"
+        });
+        setSelectedEvents([]);
+        setSelectedRelation("");
+        setSelectedMaterial("");
+        setSelectedSize("");
+        setSelectedColor("");
+        setSelectedType("");
+        setSelectedRentType("none");
+        setUploadedImages([]);
+
+        // Refresh products list
+        const productsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/getAllProducts`, {
+          credentials: 'include'
+        });
+        const productsData = await productsResponse.json();
+        setProducts(productsData);
+      } catch (error) {
+        console.error('Error creating product:', error);
+        alert(error.message || 'Failed to create product. Please try again.');
+      }
+    });
+  };
+
   return (
     <>
       {loading && <Loader />}
@@ -255,174 +626,70 @@ export default function AdminProductManager() {
             <p className="text-muted-foreground">Create and edit product information</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Copy className="w-4 h-4 mr-2" />
-              Duplicate
+            <Button variant="outline" size="sm" onClick={createTestProduct}>
+              <Plus className="w-4 h-4 mr-2" />
+              Load Test Product
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
               <Eye className="w-4 h-4 mr-2" />
               Preview
             </Button>
-            <Button variant="destructive" size="sm">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
+            <Button onClick={handleSubmit}>
+              <Save className="w-4 h-4 mr-2" />
+              Save Product
             </Button>
           </div>
         </div>
 
         <Tabs defaultValue="basic" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-9">
-            <TabsTrigger value="basic">Basic</TabsTrigger>
-            <TabsTrigger value="categorization">Categories</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="basic">Basic Info</TabsTrigger>
+            <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="media">Media</TabsTrigger>
-            <TabsTrigger value="descriptions">Descriptions</TabsTrigger>
-            <TabsTrigger value="pricing">Pricing</TabsTrigger>
-            <TabsTrigger value="inventory">Inventory</TabsTrigger>
-            <TabsTrigger value="variants">Variants</TabsTrigger>
-            <TabsTrigger value="seo">SEO</TabsTrigger>
-            <TabsTrigger value="additional">Additional</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basic">
             <Card>
               <CardHeader>
-                <CardTitle>Basic Details</CardTitle>
-                <CardDescription>Essential product information</CardDescription>
+                <CardTitle>Basic Information</CardTitle>
+                <CardDescription>Essential product details</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="product-id">Product ID</Label>
-                    <Input id="product-id" value="PRD-001" readOnly className="bg-muted" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="sku">SKU / Barcode</Label>
-                    <Input id="sku" placeholder="Enter SKU" />
-                  </div>
-                </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="product-name">Product Name *</Label>
-                  <Input id="product-name" placeholder="Enter product name" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="product-subtitle">Product Subtitle</Label>
-                  <Input id="product-subtitle" placeholder="Enter subtitle (optional)" />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statusOptions.map((status) => (
-                          <SelectItem key={status} value={status.toLowerCase()}>
-                            {status}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="visibility">Visibility</Label>
-                    <div className="flex items-center space-x-2 pt-2">
-                      <Switch id="visibility" />
-                      <Label htmlFor="visibility">Visible</Label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="featured">Featured Product</Label>
-                    <div className="flex items-center space-x-2 pt-2">
-                      <Switch id="featured" />
-                      <Label htmlFor="featured">Featured</Label>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="categorization">
-            <Card>
-              <CardHeader>
-                <CardTitle>Categorization & Filters</CardTitle>
-                <CardDescription>Organize your product with categories and tags</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <MultiSelectField
-                    label="Main Category"
-                    options={categoryOptions}
-                    selectedValues={selectedCategories}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedCategories, setSelectedCategories)}
-                  />
-
-                  <MultiSelectField
-                    label="Subcategory"
-                    options={subcategoryOptions}
-                    selectedValues={selectedSubcategories}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedSubcategories, setSelectedSubcategories)}
-                  />
-
-                  <MultiSelectField
-                    label="Occasion"
-                    options={occasionOptions}
-                    selectedValues={selectedOccasions}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedOccasions, setSelectedOccasions)}
-                  />
-
-                  <MultiSelectField
-                    label="Recipient"
-                    options={recipientOptions}
-                    selectedValues={selectedRecipients}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedRecipients, setSelectedRecipients)}
-                  />
-
-                  <MultiSelectField
-                    label="Theme / Style"
-                    options={themeOptions}
-                    selectedValues={selectedThemes}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedThemes, setSelectedThemes)}
-                  />
-
-                  <MultiSelectField
-                    label="Product Type"
-                    options={productTypeOptions}
-                    selectedValues={selectedProductTypes}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedProductTypes, setSelectedProductTypes)}
-                  />
-
-                  <MultiSelectField
-                    label="Season / Collection"
-                    options={seasonOptions}
-                    selectedValues={selectedSeasons}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedSeasons, setSelectedSeasons)}
-                  />
-
-                  <MultiSelectField
-                    label="Room / Placement"
-                    options={roomOptions}
-                    selectedValues={selectedRooms}
-                    onToggle={(value) => handleMultiSelectToggle(value, selectedRooms, setSelectedRooms)}
+                  <Label htmlFor="title">Product Title *</Label>
+                  <Input 
+                    id="title" 
+                    value={productData.title}
+                    onChange={(e) => setProductData({...productData, title: e.target.value})}
+                    placeholder="Enter product title" 
+                    required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="brand">Brand / Designer</Label>
-                  <Select>
+                  <Label htmlFor="description">Description *</Label>
+                  <Textarea 
+                    id="description"
+                    value={productData.description}
+                    onChange={(e) => setProductData({...productData, description: e.target.value})}
+                    placeholder="Enter product description"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="mainCategory">Main Category *</Label>
+                  <Select 
+                    value={productData.mainCategory}
+                    onValueChange={(value) => setProductData({...productData, mainCategory: value})}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select brand" />
+                      <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {brandOptions.map((brand) => (
-                        <SelectItem key={brand} value={brand.toLowerCase()}>
-                          {brand}
+                      {categoryOptions.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -430,458 +697,184 @@ export default function AdminProductManager() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Tags</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      placeholder="Add a tag"
-                      onKeyPress={(e) => e.key === "Enter" && addTag()}
-                    />
-                    <Button type="button" onClick={addTag} size="sm">
-                      <Plus className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="flex items-center gap-1">
-                          {tag}
-                          <X className="w-3 h-3 cursor-pointer" onClick={() => removeTag(tag)} />
-                        </Badge>
+                  <Label htmlFor="price">Price *</Label>
+                  <Input 
+                    id="price" 
+                    type="number"
+                    value={productData.price}
+                    onChange={(e) => setProductData({...productData, price: parseFloat(e.target.value)})}
+                    placeholder="Enter price"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="stock">Stock Quantity</Label>
+                  <Input 
+                    id="stock" 
+                    type="number"
+                    value={productData.stock}
+                    onChange={(e) => setProductData({...productData, stock: parseInt(e.target.value)})}
+                    placeholder="Enter stock quantity"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch 
+                    id="isAvailable"
+                    checked={productData.isAvailable}
+                    onCheckedChange={(checked) => setProductData({...productData, isAvailable: checked})}
+                  />
+                  <Label htmlFor="isAvailable">Product Available</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="rentType">Rent Type</Label>
+                  <Select 
+                    value={productData.rentType}
+                    onValueChange={(value) => setProductData({...productData, rentType: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select rent type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rentTypeOptions.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </SelectItem>
                       ))}
-                    </div>
-                  )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="details">
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Details</CardTitle>
+                <CardDescription>Additional product attributes</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <MultiSelectField
+                  label="Events"
+                  options={eventOptions}
+                  selectedValues={selectedEvents}
+                  onToggle={(value) => handleMultiSelectToggle(value, selectedEvents, setSelectedEvents)}
+                />
+
+                <div className="space-y-2">
+                  <Label>Relation</Label>
+                  <Select 
+                    value={selectedRelation}
+                    onValueChange={setSelectedRelation}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select relation" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {relationOptions.map((relation) => (
+                        <SelectItem key={relation} value={relation}>
+                          {relation}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Material</Label>
+                  <Select 
+                    value={selectedMaterial}
+                    onValueChange={setSelectedMaterial}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select material" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materialOptions.map((material) => (
+                        <SelectItem key={material} value={material}>
+                          {material}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Size</Label>
+                  <Select 
+                    value={selectedSize}
+                    onValueChange={setSelectedSize}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sizeOptions.map((size) => (
+                        <SelectItem key={size} value={size}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="color">Color</Label>
+                  <Input 
+                    id="color"
+                    value={selectedColor}
+                    onChange={(e) => setSelectedColor(e.target.value)}
+                    placeholder="Enter color"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select 
+                    value={selectedType}
+                    onValueChange={setSelectedType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {typeOptions.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="media">
-            <Card>
-              <CardHeader>
-                <CardTitle>Media</CardTitle>
-                <CardDescription>Upload product images and videos</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Main Image *</Label>
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Click to upload or drag and drop your main product image
-                    </p>
-                    <Button variant="outline" size="sm" className="mt-2">
-                      Choose File
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Gallery Images</Label>
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Upload additional product images</p>
-                    <Button variant="outline" size="sm" className="mt-2">
-                      Choose Files
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="video-url">Video URL</Label>
-                  <Input id="video-url" placeholder="https://youtube.com/watch?v=..." />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="descriptions">
-            <Card>
-              <CardHeader>
-                <CardTitle>Descriptions</CardTitle>
-                <CardDescription>Product descriptions and specifications</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="short-description">Short Description</Label>
-                  <Textarea
-                    id="short-description"
-                    placeholder="Brief product description (max 150 characters)"
-                    maxLength={150}
-                  />
-                  <p className="text-xs text-muted-foreground">0/150 characters</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="full-description">Full Description</Label>
-                  <Textarea id="full-description" placeholder="Detailed product description" rows={6} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Specifications</Label>
-                  <div className="border rounded-md p-4">
-                    <div className="grid grid-cols-2 gap-4 mb-2">
-                      <Input placeholder="Attribute name" />
-                      <Input placeholder="Value" />
-                    </div>
-                    <Button variant="outline" size="sm">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Specification
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="pricing">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pricing</CardTitle>
-                <CardDescription>Set product pricing and tax information</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cost-price">Cost Price</Label>
-                    <Input id="cost-price" type="number" placeholder="0.00" step="0.01" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="retail-price">Retail Price *</Label>
-                    <Input id="retail-price" type="number" placeholder="0.00" step="0.01" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="sale-price">Sale Price</Label>
-                    <Input id="sale-price" type="number" placeholder="0.00" step="0.01" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Sale Start Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !saleStartDate && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {saleStartDate ? format(saleStartDate, "PPP") : "Pick a date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={saleStartDate} onSelect={setSaleStartDate} initialFocus />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Sale End Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !saleEndDate && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {saleEndDate ? format(saleEndDate, "PPP") : "Pick a date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={saleEndDate} onSelect={setSaleEndDate} initialFocus />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="tax-class">Tax Class</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select tax class" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {taxClassOptions.map((taxClass) => (
-                        <SelectItem key={taxClass} value={taxClass.toLowerCase()}>
-                          {taxClass}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="inventory">
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventory & Shipping</CardTitle>
-                <CardDescription>Manage stock and shipping information</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="stock-quantity">Stock Quantity</Label>
-                    <Input id="stock-quantity" type="number" placeholder="0" min="0" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="stock-status">Stock Status</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stockStatusOptions.map((status) => (
-                          <SelectItem key={status} value={status.toLowerCase()}>
-                            {status}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="min-order-qty">Minimum Order Qty</Label>
-                    <Input id="min-order-qty" type="number" placeholder="1" min="1" />
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="weight">Weight (kg)</Label>
-                    <Input id="weight" type="number" placeholder="0.0" step="0.1" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="length">Length (cm)</Label>
-                    <Input id="length" type="number" placeholder="0" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="width">Width (cm)</Label>
-                    <Input id="width" type="number" placeholder="0" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="height">Height (cm)</Label>
-                    <Input id="height" type="number" placeholder="0" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="shipping-class">Shipping Class</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select shipping class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {shippingClassOptions.map((shippingClass) => (
-                          <SelectItem key={shippingClass} value={shippingClass.toLowerCase()}>
-                            {shippingClass}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="warehouse-location">Warehouse Location</Label>
-                    <Input id="warehouse-location" placeholder="Enter location" />
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch id="backorder-allowed" />
-                  <Label htmlFor="backorder-allowed">Allow Backorders</Label>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="variants">
-            <Card>
-              <CardHeader>
-                <CardTitle>Product Variants</CardTitle>
-                <CardDescription>Configure product variations like size, color, etc.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {variants.map((variant) => (
-                  <div key={variant.id} className="border rounded-lg p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Variant Attribute</h4>
-                      <Button variant="outline" size="sm" onClick={() => removeVariant(variant.id)}>
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Attribute Name</Label>
-                        <Select>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select attribute" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="color">Color</SelectItem>
-                            <SelectItem value="size">Size</SelectItem>
-                            <SelectItem value="material">Material</SelectItem>
-                            <SelectItem value="style">Style</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Options</Label>
-                        <Input placeholder="Enter options (comma separated)" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                <Button variant="outline" onClick={addVariant}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Variant
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="seo">
-            <Card>
-              <CardHeader>
-                <CardTitle>SEO & Marketing</CardTitle>
-                <CardDescription>Optimize for search engines and marketing</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="seo-title">SEO Title</Label>
-                  <Input id="seo-title" placeholder="Optimized title for search engines" maxLength={60} />
-                  <p className="text-xs text-muted-foreground">0/60 characters</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="meta-description">Meta Description</Label>
-                  <Textarea id="meta-description" placeholder="Brief description for search results" maxLength={160} />
-                  <p className="text-xs text-muted-foreground">0/160 characters</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="slug">URL Slug</Label>
-                  <Input id="slug" placeholder="product-url-slug" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="search-keywords">Search Keywords</Label>
-                  <Input id="search-keywords" placeholder="keyword1, keyword2, keyword3" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Promo Banner Image</Label>
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center">
-                    <Upload className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Upload promotional banner</p>
-                    <Button variant="outline" size="sm" className="mt-2">
-                      Choose File
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="additional">
-            <Card>
-              <CardHeader>
-                <CardTitle>Additional Information</CardTitle>
-                <CardDescription>Extra product details and internal notes</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="personalization-text">Personalization Text</Label>
-                  <Input id="personalization-text" placeholder="Custom text for personalization" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Upload Artwork</Label>
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center">
-                    <Upload className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Upload custom artwork files</p>
-                    <Button variant="outline" size="sm" className="mt-2">
-                      Choose Files
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Occasion Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal text-muted-foreground"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        Pick an occasion date
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar mode="single" initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="supplier">Supplier</Label>
-                  <Input id="supplier" placeholder="Supplier name" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="internal-notes">Internal Notes</Label>
-                  <Textarea id="internal-notes" placeholder="Internal notes (not visible to customers)" rows={4} />
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-muted-foreground">
-                  <div>
-                    <Label>Date Created</Label>
-                    <p className="mt-1">2024-01-15 10:30 AM</p>
-                  </div>
-                  <div>
-                    <Label>Last Modified</Label>
-                    <p className="mt-1">2024-01-20 2:45 PM</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {renderMediaTab()}
           </TabsContent>
         </Tabs>
 
         {/* Sticky Action Buttons */}
         <div className="sticky bottom-0 bg-background border-t p-4 mt-8">
           <div className="flex flex-wrap gap-2 justify-end">
-            <Button variant="outline">Save Draft</Button>
             <Button variant="outline" onClick={() => setShowPreview(true)}>
               <Eye className="w-4 h-4 mr-2" />
               Preview
             </Button>
-            <Button>
+            <Button onClick={handleSubmit}>
               <Save className="w-4 h-4 mr-2" />
-              Publish Product
+              Save Product
             </Button>
           </div>
         </div>
+
         {showPreview && (
           <ProductPreviewModalComponent
             product={productData}
-            categories={selectedCategories}
-            occasions={selectedOccasions}
-            recipients={selectedRecipients}
-            themes={selectedThemes}
             onClose={() => setShowPreview(false)}
           />
         )}

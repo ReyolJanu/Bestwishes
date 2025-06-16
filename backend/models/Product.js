@@ -15,7 +15,7 @@ const productSchema = new mongoose.Schema(
     // Main category (for rough grouping)
     mainCategory: {
       type: String,
-      required: true,
+      required: [true, "Please select a main category"],
       enum: {
         values: [
           "Balloon",
@@ -97,27 +97,31 @@ const productSchema = new mongoose.Schema(
     price: {
       type: Number,
       required: [true, "Please enter price"],
+      min: [0, "Price cannot be negative"],
     },
 
     imageUrls: [
       {
         type: String,
-        required: true,
+        required: [true, "Please provide at least one image"],
       },
     ],
 
     stock: {
       type: Number,
       default: 0,
+      min: [0, "Stock cannot be negative"],
     },
 
     isAvailable: {
       type: Boolean,
       default: true,
     },
-    rating:{
-      type:Number,
-      default: 0
+    rating: {
+      type: Number,
+      default: 0,
+      min: [0, "Rating cannot be negative"],
+      max: [5, "Rating cannot be more than 5"],
     },
     owner: {
       type: mongoose.Schema.Types.ObjectId,
@@ -136,7 +140,19 @@ const productSchema = new mongoose.Schema(
       default: Date.now,
     },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+  }
 );
+
+// Add validation for facets
+productSchema.pre('save', function(next) {
+  if (this.facets.events && !Array.isArray(this.facets.events)) {
+    this.facets.events = [this.facets.events];
+  }
+  next();
+});
 
 module.exports = mongoose.model("Product", productSchema);
